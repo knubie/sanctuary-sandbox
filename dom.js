@@ -17,22 +17,20 @@ const tree = function(list) {
   if (S.isNothing(list)) { return S.Nothing() }
 
   var getElType = R.compose(
-    R.chain,
-    S.last,
-    R.match(/<\/?([a-z]+)[^>]*>/),
-    R.chain,
-    S.head
+    R.chain(S.last),
+    R.map(R.match(/<\/?([a-z]+)[^>]*>/)),
+    R.chain(S.head)
   );
-  var elType = R.chain(
-    S.last,
-    R.map(
-      R.match(/<\/?([a-z]+)[^>]*>/),
-      R.chain(
-        S.head,
-        list
-      )
-    )
-  );
+  //var elType = R.chain(
+    //S.last,
+    //R.map(
+      //R.match(/<\/?([a-z]+)[^>]*>/),
+      //R.chain(
+        //S.head,
+        //list
+      //)
+    //)
+  //);
   var elType = list.chain(S.head).map(R.match(/<\/?([a-z]+)[^>]*>/)).chain(S.last);
   console.log(elType);
 
@@ -41,12 +39,28 @@ const tree = function(list) {
   }
   var closeTag = S.Just("</").concat(elType).concat(S.Just(">"));
   console.log(closeTag);
-  closeTag.chain(S.indexOf)
-  var closeIndex = list.chain(S.indexOf(closeTag));
+
+  //closeTag.chain(S.indexOf)
+  // closeTag -> Maybe String
+  // list -> Maybe [String]
+  //S.indexOf(closeTag, list);
+  //R.map(S.indexOf, closeTag);
+  //var closeIndex = S.Just(S.indexOf).ap(closeTag).ap(list)
+  console.log('------')
+  console.log(closeTag);
+  console.log(list);
+  console.log('------')
+  //console.log(R.map(S.indexOf, closeTag));
+  //var closeIndex = R.map(S.indexOf, closeTag).ap(list);
+  closeTag.chain(S.indexOf);
+  //S.Just(S.indexOf).
+  //var closeIndex = list.chain(S.indexOf(closeTag));
   //var closeIndex = R.indexOf(`</${elType}>`, list);
   console.log(closeIndex);
+
   var children = S.tail(R.take(closeIndex, list));
   console.log(children);
+
   var siblings = S.tail(R.drop(closeIndex, list));
   console.log(siblings);
 
