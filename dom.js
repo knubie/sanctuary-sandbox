@@ -14,6 +14,7 @@ const tokens = tokenizer(string);
 
 // tree :: [String] -> Maybe Tree
 const tree = function(list) {
+  console.log(list)
   if (S.isNothing(list)) { return S.Nothing() }
 
   var getElType = R.compose(
@@ -32,39 +33,34 @@ const tree = function(list) {
     //)
   //);
   var elType = list.chain(S.head).map(R.match(/<\/?([a-z]+)[^>]*>/)).chain(S.last);
-  console.log(elType);
+  //console.log(elType);
 
-  if (elType.isNothing) {
-    return list.chain(S.head);
-  }
+  //if (elType.isNothing) {
+    //return list.chain(S.head);
+  //}
   var closeTag = S.Just("</").concat(elType).concat(S.Just(">"));
-  console.log(closeTag);
+  //console.log(closeTag);
 
-  //closeTag.chain(S.indexOf)
   // closeTag -> Maybe String
   // list -> Maybe [String]
   //S.indexOf(closeTag, list);
   //R.map(S.indexOf, closeTag);
   //var closeIndex = S.Just(S.indexOf).ap(closeTag).ap(list)
-  console.log('------')
-  console.log(closeTag);
-  console.log(list);
-  console.log('------')
-  //console.log(R.map(S.indexOf, closeTag));
-  //var closeIndex = R.map(S.indexOf, closeTag).ap(list);
-  closeTag.chain(S.indexOf);
   //S.Just(S.indexOf).
-  //var closeIndex = list.chain(S.indexOf(closeTag));
   //var closeIndex = R.indexOf(`</${elType}>`, list);
-  console.log(closeIndex);
+  var closeIndex = S.Just(S.indexOf).ap(closeTag).chain(R.chain(R.__, list));
+  //console.log(closeIndex);
 
-  var children = S.tail(R.take(closeIndex, list));
-  console.log(children);
+  //var children = S.tail(R.take(closeIndex, list));
+  var children = S.Just(R.take).ap(closeIndex).ap(list).chain(S.tail)
+  //console.log('---children---')
+  //console.log(children);
 
-  var siblings = S.tail(R.drop(closeIndex, list));
-  console.log(siblings);
+  //var siblings = S.tail(R.drop(closeIndex, list));
+  var siblings = S.Just(R.drop).ap(closeIndex).ap(list).chain(S.tail)
+  //console.log(siblings);
 
-  //return S.Maybe.of(R.reject(S.isNothing, [[S.head(list), tree(children)], tree(siblings)]));
+  return S.Maybe.of([[list.chain(S.head), tree(children)], tree(siblings)]);
 }
 
 console.log("%j", tree(S.Just(tokens)));
