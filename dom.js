@@ -2,70 +2,120 @@ const R = require('ramda');
 const Sanctuary = require('sanctuary');
 const $ = require('sanctuary-def');
 
-const env = $.env;
-const def = $.create({checkTypes: true, env});
+//=============================
+// Type definitions
+//=============================
 
+// Tokens :: Array String
+const Tokens = $.NullaryType(
+  'html-parser/Tokens',
+  x => $.test([], $.Array($.String), x)
+);
+
+// Nodes :: [Node]
+const Nodes = $.NullaryType(
+  'html-parser/Nodes',
+  x => $.test([], $.Array(Node), x)
+);
+
+// HTMLNode :: name: String, attr: Attributes, children: Nodes
+const HTMLNode = $.RecordType({name: $.String,
+                               attr: $.Object,
+                           children: Nodes});
+
+// TextNode :: String
+const TextNode = $.NullaryType(
+  'html-parser/TextNode',
+  x => $.test([], $.String, x)
+);
+
+// Node :: HTMLNode | TextNode
+const Node = $.NullaryType(
+  'html-parser/Node',
+  x => $.test([], HTMLNode, x) || $.test([], TextNode, x)
+);
+
+//  $Maybe :: Type -> Type
+var Maybe = $.UnaryType(
+  'sanctuary/Maybe',
+  function(x) { return x != null && x['@@type'] === 'sanctuary/Maybe'; },
+  function(maybe) { return maybe.isJust ? [maybe.value] : []; }
+);
+
+const env = $.env.concat([Tokens, Nodes, HTMLNode, TextNode, Node, Maybe]);
+const def = $.create({checkTypes: true, env});
 const S = Sanctuary.create({checkTypes: true, env: Sanctuary.env});
 
-const string = "<html><body class='body-class'><div id='header'><p>Hello, world!</p><p>Welcome</p></div></body></html>"
+
+// ============================
+// Actual Code
+// ============================
+
+const string = "<html><body class='body-class'><div id='header'><p>Hello, world!<test></test></p><p>Welcome</p></div></body></html>"
 const tokenRE = /(<\/?[a-z]+[^>]*>|[^<]+)/
-const tokenizer = R.compose(R.filter(S.I), R.split(tokenRE));
-const tokens = tokenizer(string);
 
-// tree :: [String] -> Maybe Tree
-const tree = function(list) {
-  console.log(list)
-  if (S.isNothing(list)) { return S.Nothing() }
+// tokenizer :: String -> Tokens
+const tokenize = R.compose(R.filter(S.I), R.split(tokenRE));
 
-  var getElType = R.compose(
-    R.chain(S.last),
-    R.map(R.match(/<\/?([a-z]+)[^>]*>/)),
-    R.chain(S.head)
+// getNameOfFirstElement :: String -> Maybe String
+const getNameOfFirstElement = R.compose(
+  R.unnest,
+  R.chain(S.last),
+  R.chain(S.match(/<\/?([a-z]+)[^>]*>/)),
+  S.head
+)
+
+// createCloseTag :: String -> Maybe String
+const createCloseTag = el => S.Just(`</${el}>`);
+
+// children :: Tokens -> Maybe Tokens
+const children = def('children', {}, [Tokens, Maybe(Tokens)], (tokens) => {
+  return R.composeK(
+    R.ifElse(R.isEmpty, S.Nothing, S.Just),
+    S.tail,
+    S.take(R.__, tokens),
+    S.indexOf(R.__, tokens),
+    createCloseTag,
+    getNameOfFirstElement
+  )(S.Just(tokens))
+});
+
+// siblings :: Tokens -> Maybe Tokens
+const siblings = def('siblings', {}, [Tokens, Maybe(Tokens)], (tokens) => {
+  // Should be able to use R.composeK here, but I can't figure out how to
+  // "unchain" S.or
+  return R.compose(
+    R.chain(R.ifElse(R.isEmpty, S.Nothing, S.Just)),
+    R.chain(S.tail),
+    R.chain(S.drop(R.__, tokens)),
+    // If the first token is not an opening element tag, but instead
+    // some inner text, use 1 as the drop index instead of the closing tag
+    // (since there is no closing tag)
+    S.or(R.__, S.Just(1)),
+    R.chain(S.indexOf(R.__, tokens)),
+    R.chain(createCloseTag),
+    R.chain(getNameOfFirstElement)
+  )(S.Just(tokens))
+});
+
+// tree :: Tokens -> Nodes
+const tree = def('tree', {}, [Tokens, Nodes], (tokens) => {
+  var element = getNameOfFirstElement(tokens);
+  var node;
+  if (element.isNothing) {
+    node = S.head(tokens).value;
+  } else {
+    node = {
+      name: element.value,
+      attr: {},
+      children: S.maybe([], tree, children(tokens))
+    };
+  }
+
+  return R.filter(R.identity,
+    [node, R.head(S.maybe([], tree, siblings(tokens)))]
   );
-  //var elType = R.chain(
-    //S.last,
-    //R.map(
-      //R.match(/<\/?([a-z]+)[^>]*>/),
-      //R.chain(
-        //S.head,
-        //list
-      //)
-    //)
-  //);
-  var elType = list.chain(S.head).map(R.match(/<\/?([a-z]+)[^>]*>/)).chain(S.last);
-  //console.log(elType);
+});
 
-  //if (elType.isNothing) {
-    //return list.chain(S.head);
-  //}
-  var closeTag = S.Just("</").concat(elType).concat(S.Just(">"));
-  //console.log(closeTag);
-
-  // closeTag -> Maybe String
-  // list -> Maybe [String]
-  //S.indexOf(closeTag, list);
-  //R.map(S.indexOf, closeTag);
-  //var closeIndex = S.Just(S.indexOf).ap(closeTag).ap(list)
-  //S.Just(S.indexOf).
-  //var closeIndex = R.indexOf(`</${elType}>`, list);
-  var closeIndex = S.Just(S.indexOf).ap(closeTag).chain(R.chain(R.__, list));
-  //console.log(closeIndex);
-
-  //var children = S.tail(R.take(closeIndex, list));
-  var children = S.Just(R.take).ap(closeIndex).ap(list).chain(S.tail)
-  //console.log('---children---')
-  //console.log(children);
-
-  //var siblings = S.tail(R.drop(closeIndex, list));
-  var siblings = S.Just(R.drop).ap(closeIndex).ap(list).chain(S.tail)
-  //console.log(siblings);
-
-  return S.Maybe.of([[list.chain(S.head), tree(children)], tree(siblings)]);
-}
-
-console.log("%j", tree(S.Just(tokens)));
-//console.log("%j", tree(S.Just(['foo'])));
-//var foo = S.Just(tokens).chain(S.head);
-//console.log(foo);
-//console.log(R.reject(S.isNothing, [S.Nothing(), S.Maybe.of("foo"), S.Maybe.of("bar"), S.Nothing()]));
-//console.log(tokens);
+const tokens = tokenize(string);
+console.log(JSON.stringify(tree(tokens)));
